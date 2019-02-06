@@ -1,0 +1,545 @@
+%\VignetteIndexEntry{geosample - An R package for Geostatistical Sampling Designs}
+%\VignetteEngine{knitr::knitr}
+%\VignetteKeyword{geosample}
+%\VignetteKeyword{package}
+%\VignetteKeyword{vignette}
+%\VignetteKeyword{LaTeX}
+%\VignettePackage{geosample}
+\documentclass[nojss]{jss}
+
+
+\usepackage[latin9]{inputenc}
+\usepackage{bbm}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{mathabx}
+\usepackage{parskip}
+\usepackage{booktabs}
+\usepackage{setspace}
+\usepackage{enumitem}
+\usepackage{setspace}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{subcaption}
+\usepackage{cleveref}
+\usepackage{lmodern}
+\usepackage[british]{babel} % for correct word hyphenation
+\raggedbottom % for blank spaces at the bottom (e.g., references section)
+%% define dimension symbol
+\def \IR{\hbox{{\rm I}\kern-.2em\hbox{{\rm R}}}}
+
+%% specify the standard width of figures
+%\newcommand*{\figurewidth}{0.9\textwidth}
+
+\clubpenalty=11000
+\widowpenalty=11000
+\displaywidowpenalty=11000
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%% declarations for jss.cls %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%% almost as usual
+\author{Michael G Chipeta\\University of Oxford\And
+        Barry Rowlingson\\Lancaster University \And
+				Peter J Diggle\\Lancaster University}
+\title{\pkg{geosample}: an \proglang{R} Package for Geostatistical Sampling Designs}
+
+%% for pretty printing and a nice hypersummary also set:
+\Plainauthor{Michael G Chipeta, Barry Rowlingson, Peter J Diggle} %% comma-separated
+\Plaintitle{geosample: an R Package for Geostatistical Sampling Designs} %% without formatting
+\Shorttitle{\pkg{geosample}: an \proglang{R} Package for Geostatistical Sampling Designs} %% a short title (if necessary)
+
+%% an abstract and keywords
+\Abstract{In this paper we introduce a new \proglang{R} package, \pkg{geosample}, for constructing geostatistical sampling designs. The new package implements classes of \textit{adaptive} and \textit{non-adaptive} probability-based sampling designs. Non-adaptive sampling designs choose all sampling locations in a single wave without reference to existing data. Adaptive sampling designs use information from existing data to inform a choice of additional sample locations at each sampling wave. We illustrate the use of the package through the  construction of both adaptive and non-adaptive designs, using a simulated data-set and malaria prevalence data from southern Malawi.}
+
+\Keywords{adaptive sampling designs, inhibitory sampling designs, geostatistics, surveillance sampling, \proglang{R}}
+\Plainkeywords{adaptive sampling designs, inhibitory sampling designs, geostatistics, surveillance sampling, R} %% without formatting
+%% at least one keyword must be supplied
+
+%% publication information
+%% NOTE: Typically, this can be left commented and will be filled out by the technical editor
+%% \Volume{50}
+%% \Issue{9}
+%% \Month{June}
+%% \Year{2012}
+%% \Submitdate{2012-06-04}
+%% \Acceptdate{2012-06-04}
+
+%% The address of (at least) one author should be given
+%% in the following format:
+\Address{
+  Michael G Chipeta, Big Data Institute, University of Oxford, Oxford, OX3 7LF, UK\\
+  E-mail: \email{mchipeta@mlw.mw}%\\
+  %URL: \url{http://www.lancs.ac.uk}\\[1em]
+  %Peter J Diggle\\
+  %E-mail: \email{p.diggle@lancaster.ac.uk}\\
+  %URL: \url{http://www.lancaster.ac.uk/staff/diggle/}\\[1em]
+  }
+
+%% for those who use Sweave please include the following line (with % symbols):
+%% need no \usepackage{Sweave.sty}
+
+%% end of declarations %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\onehalfspacing
+\begin{document}
+%\SweaveOpts{concordance=FALSE, prefix.string=geosample-vignette, keep.source=TRUE}
+<<options, echo=FALSE>>=
+options(prompt="R> ", continue="+  ", width=78, useFancyQuotes=FALSE, digits=4, message=FALSE)
+@
+%% include your article here, just as usual
+%% Note that you should use the \pkg{}, \proglang{} and \code{} commands.
+
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+%Options for working on the manuscript, remove this before submission!
+%\large %increased text size
+%\doublespacing %increased line spread
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+\setlength{\fboxsep}{2mm}
+\newlength{\parboxwidth}
+\setlength{\parboxwidth}{\textwidth}
+\advance\parboxwidth by -2\fboxsep
+\fbox{\parbox{\parboxwidth}{
+\small
+Please cite this manuscript as:\\[0.5em]
+Chipeta, M G, Rowlingson B and Diggle, P J. (2019). geosample: An R package for geostatistical sampling designs. \textit{Under review}}}
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introduction}
+\label{sec:intro}
+
+Geostatistics is primarily concerned with the investigation of an unobserved spatial phenomenon $S = \{S(x) : x \in {\cal D} \subset \IR^{2}\}$, where ${\cal D}$ is a geographical region of interest, using data in the form of measurements $y_i$ at locations $x_i \in {\cal D}$. Typically, each $y_i$ can be regarded as a noisy version of $S(x_i)$. We write ${\cal X} = \{x_1, \ldots , x_n\}$ and call ${\cal X}$ the \textit{sampling design}. This paper introduces a new \proglang{R} \citep{RcoreTeam2017} package, \pkg{geosample}, for geostatistical sampling designs. The work was motivated by applications to disease prevalence mapping, where the main focus of scientific interest is on deciding which households to sample in each round of sampling so as to optimise the precision of the resulting sequence of area-wide prevalence maps.
+
+
+Geostatistical analysis can address either or both of two broad objectives: \textit{estimation} of the parameters that define a stochastic model for the unobserved process $S$ and the observed data $\{(y_i, x_i) : i = 1, \ldots , n\}$; and \textit{prediction} of the unobserved realisation of $S(x)$, or particular characteristics of this realisation.
+
+
+In practice, geostatistical sampling designs that are efficient for parameter estimation are generally inefficient for spatial prediction, and vice-versa \citep{Diggle2007,Muller2007}. Additionally, parameter values are usually unknown in practice, hence design for prediction involves a compromise. Furthermore, the diversity of potential predictive targets requires design strategies to be context-specific \citep{Chipeta2016}. Another important distinction is between \textit{non-adaptive} sampling designs that must be completely specified prior to data-collection, and \textit{adaptive} designs, for which data are collected over a period of time and later sampling locations can depend on data collected from earlier locations \citep{Chipeta2016, Chipeta2016b}.
+
+
+In this paper, we describe the implementation of geostatistical sampling algorithms for constructing  \textit{adaptive} and \textit{non-adaptive} classes of designs as described in \citet{Chipeta2016} and \citet{Chipeta2016b}, respectively. The \pkg{geosample} package includes functionality to determine sampling locations within a set of spatial constraints and information from existing sampling locations. The package makes use of functions from other \proglang{R} packages, including \pkg{sp, splancs, rgeos} and \pkg{pdist}, which support data manipulation and computation. In order to determine new sampling locations in the case of adaptive sampling, \pkg{geosample} requires \textit{predictions} to be made at all unobserved (potential sampling) locations. These can be obtained from existing packages including \pkg{PrevMap, geoR, lgcp} and \pkg{spatstat} that can carry out predictive inference.
+
+The paper is structured as follows. In ~\Cref{sec:methods} we give the theoretical background within which adaptive and non-adaptive designs have been developed. ~\Cref{sec:nonadaptive} describes a class of non-adaptive designs, including random and inhibitory sampling (with or without \textit{close pairs}). ~\Cref{sec:adaptive} describes a  class of adaptive designs. ~\Cref{sec:geosample} gives an overview of the package by way of a walk-through of a simulated dataset, and an application to malaria prevalence mapping in southern Malawi. ~\Cref{sec:conclusion} is a concluding discussion.
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Methodological framework}
+\label{sec:methods}
+
+Geostatistical design problems can be classified according to whether the primary objective is parameter estimation or spatial prediction and, in the latter case, whether model parameters are assumed known or unknown. Methods in the \pkg{geosample} package focus on designs for efficient prediction when model parameters are unknown.
+
+\subsection{Non-adaptive designs}
+\label{sec:nonadaptive}
+
+We first consider non-adaptive geostatistical designs. These offer standard ways of collecting and analysing geostatistical data in which sampling locations are fixed in advance of any data collection. Two standard non-adaptive designs are a \textit{completely random design}, in which the sample locations $x_i$ form an independent random sample from the uniform distribution on ${\cal D}$, and a \textit{completely regular design} in which the $x_i$ form a regular square or, less commonly, triangular lattice, ensuring an even coverage over the study region. \citet{Diggle2006} implemented lattice-based designs and \citet{Chipeta2016b} implemented \textit{inhibitory geostatistical designs} in which sampled locations exhibit a degree of spatial regularity, intermediate between completely random and lattice designs.
+
+
+\subsubsection{Completely random designs}
+\label{sec:random}
+
+A completely randomised design has locations $x_i;\: i = 1, \ldots, n$, chosen independently, each with a uniform distribution over ${\cal D}$. This ensures that the design is stochastically independent of the underlying spatial phenomenon of interest $S(x)$, which is a requirement for the validity of standard geostatistical methods \citep{Diggle2010d}. However, the resulting uneven coverage of ${\cal D}$ has a negative impact on spatial prediction. Compeletely randomised design strategies are well established in classical survey sampling \citep{Cochran1977}. An undesirable feature of these designs when the goal is prediction is their tendency to leave large swaths of unsampled areas \citep{Muller2007}. Nevertheless, previous research studies have shown that this class of designs is efficient for estimation of covariance structure. See, for example, \citet{Russo1984, Warrick1987, Muller1999, Lark2002}.
+
+In the \pkg{geosample} package, a completely randomised design ${\cal X}$ is implemented by the function \code{random.sample}. The function takes a sample of the specified number of locations $n$, either from $N$ potential sampling locations without replacement, or as an independent sample from a designated region ${\cal D}$.
+
+
+\subsubsection{Inhibitory designs}
+\label{sec:inhibitory}
+
+In some geostatistical analysis problems, the covariance structure is assumed to be known, and the goal is spatial prediction. Previous research has shown that classes of completely regular designs are then more efficient than completely random designs. See, for example, \citet{McBratney1981, McBratney1981b, Yfantis1987, Ritter1996}. In practice, the covariance structure is usually unknown and needs to be estimated. Usually, one has to use the same data for estimation of covariance parameters and for spatial prediction, and efficient prediction requires good estimates of the second order characteristics \citep{Muller2015}. Designs that offer a compromise between the two contrasting aims are therefore attractive. One such example is the following class of inhibitory designs.
+
+An inhibitory design has $n$ random locations in ${\cal D}$ with the constraint that no two locations are separated by a distance of less than a specified value $\delta$. Inhibitory designs adhere to the established principles of random sampling theory while guaranteeing some degree of spatial regularity. This construction has also been suggested as a model for naturally occuring patterns of points that exhibit spatial regularity \citep{Matern1986a} (originally published in 1960). All design points ${\cal X}$ that meet the inhibitory constraint are equally likely to be picked. \citet{Chipeta2016b} developed and implemented \textit{simple inhibitory} (\textbf{SI}) and \textit{inhibitory with close pairs} (\textbf{ICP}) design strategies. In the latter, $n - k$ simple inhibitory sample locations are augmented by $k$ locations each positioned close to one of the randomly selected $n - k$ locations in the simple inhibitory design, uniformly distributed within a disk of radius $\zeta$. Inclusion of close pairs of sampled locations helps to identify a suitable parametric family for the specified correlation structure of a geostatistical dataset.
+
+Inhibitory design construction can be applied whether or not the potential sampling locations are confined to a finite set of points. In the \pkg{geosample} package, inhibitory designs for a finite set of points are implemented by the function \code{discrete.inhibit.sample}, and for points in a continuum, by the function \code{contin.inhibit.sample}. In each of these implementations, \pkg{geosample} package can generate simple inhibitory or inhibitory with close pair samples.
+
+An inhibitory design, $\textbf{SI}(n, \delta)$, is implemented as follows. Choose a \textit{packing density} for the design, i.e. the proportion of ${\cal D}$ covered by $n$ non-overlapping disks of diameter $\delta$, given by $\rho = (n \pi \delta)/(4|{\cal D}|)$. An \textbf{SI}($n, \delta$) design on ${\cal D}$ is then generated by the following steps.
+
+
+\begin{itemize}
+  \item Step 1: Draw a sample of locations $x_i:i = 1, \ldots, n$ completely at random in ${\cal D}$;
+  \item Step 2: Set $i = 1$;
+  \item Step 3: Calculate the minimum, $d_{min}$, of the distances from $x_i$ to all other $x_j$ in the         current sample;
+  \item Step 4: If $d_{min} \geq \delta$, increase $i$ by 1 and return to step 3 if $i \leq n$, otherwise stop;
+  \item Step 5: If $d_{min} < \delta$, replace $x_i$ by a new location drawn completely at random in            ${\cal D}$ and return to step 4.
+\end{itemize}
+
+For efficient parameter estimation, the simple inhibitory sampling scheme can be augmented by pairs of closely spaced points. The algorithm then requires the following additional steps. Let $k$ be the required number of close pairs. Choose a value $\zeta$ such that a close pair of points will be separated by a distance of at most $\zeta$. For a total of $n$ points, an $\textbf{ICP}(n, k, \delta, \zeta)$ design consists of an \textbf{SI}($n - k, \delta$) design with inhibition distance $\delta$ augmented by $k$ locations each positioned relative to one of the randomly selected $n - k$ locations in the \textbf{SI} design according to the uniform distribution over a disk of radius $\zeta$. The following steps generate the \textbf{ICP}$(n, k, \delta, \zeta)$ design.
+
+\begin{itemize}
+  \item Step 1: Construct a simple inhibitory design \textbf{SI}$(n - k, \delta)$;
+  \item Step 2: Sample $k$ from $x_1, \ldots, x_{n - k}$ without replacement and call this set $x^{             *}_{j}, j = 1, \ldots, k$;
+  \item Step 3: For $j = 1, \ldots, k, x_{n - k + j}$ is uniformly distributed on the disk with center          $x^{*}_{j}$ and radius $\zeta$.
+\end{itemize}
+
+
+
+\subsection{Adaptive designs}
+\label{sec:adaptive}
+
+We now focus on a class of adaptive geostatistical designs, in which sampled locations are defined in batches at a sequence of times, and the locations in any batch use data from earlier batches to optimise data collection towards the analysis objective. The adaptive sampling design criterion ensures that data are collected only from locations that will deliver useful additional information \citep{Chipeta2016}.
+
+An adaptive design strategy takes the following approach.
+
+\begin{itemize}
+  \item Step 1: Specify the finite set, ${\cal X^*}$ say, of $n^*$ potential sampling locations $x_i \in {\cal D}$. If all points $x \in {\cal D}$ are eligible, we approximate this by specifying ${\cal X^*}$ as a finely spaced grid to cover ${\cal D}$;
+  \item Step 2: Use a non-adaptive design to choose an initial set of sample locations, ${\cal X}_0 = \{x_i \in {\cal D} : i = 1, \ldots, n_0\}$;
+  \item Step 3: Use the corresponding data $Y_0$ to estimate the parameters of an assumed geostatistical model;
+  \item Step 4: Specify a selection criterion for the addition of one or more new sample locations to form an enlarged set ${\cal X}_0 \cup {\cal X}_1$;
+  \item Step 5: Repeat steps 3 and 4 with augmented data $Y_1$ at the points in ${\cal X}_1$;
+  \item Step 6: Continue until the required number of points has been sampled, a required performance criterion has been achieved or no more potential sampling points are available.
+\end{itemize}
+
+In step 2, any initial design can be supplied, but our general recommendation would be to use an \textit{inhibitory plus close pairs} design.
+
+Adaptive sampling is implemented by \code{adaptive.sample} function. The function implements \textit{singleton adaptive sampling}, in which individual locations are chosen sequentially, allowing $x_{k+1}$ to depend on data obtained at all earlier locations $x_1, \ldots, x_k$, and \textit{batch adaptive sampling}, where sets of $b > 1$ locations are chosen, with each set $(x_{k + 1}, \ldots, x_{k + b})$, dependent on data from all earlier locations $x_1, \ldots, x_k$.
+
+
+\subsection{Selection criteria}
+\label{sec:samp-crit}
+
+The \code{adaptive.sample} function offers a choice of either \textit{predictive variance (PV)} or \textit{exceedance probabilities (EP)} selection criteria in step 4 above. For the predictive target $T = S(x)$ at a particular location $x$, given an initial set of sampling locations ${\cal X}_0 = (x_1, \ldots , x_{n_0})$ the available set of additional sampling locations is $A_0 = {\cal X}^*\setminus {\cal X}_0$.
+
+In the PV selection criterion, any $x \in A_0$ has the predictive variance, $PV(x) =  {\rm Var}(T|Y_0)$ \citep{Diggle2007}. The algorithm then chooses the locations $x^*$ with the largest values of $PV(x)$, either singly or in batches \citep{Chipeta2016}. For the EP selection criterion, each $x \in A_0$ has exceedance probability, $EP(x) = P[\{T(x) > t|y_{0}\} - 0.5]$ for a given threshold $t$ \citep{Giorgi2015}. The algorithm then chooses the locations $x^* = \textit{arg min}_{A_0} EP(x)$, either singly or in batches. When locations are chosen in batches, a \textit{minimum distance} penalty is imposed for both PV and EP criteria. This ensures that no two sampling locations are separated by a distance of less than $\delta$, to avoid sampling from multiple locations $x$ at which the corresponding $S(x)$ are highly correlated.
+
+
+\subsection{Perfomance criteria}
+\label{sec:perf-crit}
+
+For design strategies implemented in \pkg{geosample}, we focus on a \textit{predictive target} $T = {\cal T}(S)$, where the property of $S$ is of primary interest. We use a generic measure of the predictive accuracy of a design ${\cal X}$, the mean square error,
+
+\begin{equation}
+\label{eqn:mse}
+MSE(\hat{T}) = E[(T - \hat{T})^2]
+\end{equation}
+
+where $\hat{T} = E[T|Y;{\cal X}]$ is the minimum mean square error predictor of $T$ for any given design ${\cal X}$ in ${\cal D}$.
+
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Introduction to the geosample package}
+\label{sec:geosample}
+
+In this section, we present an introduction to the \pkg{geosample} package functionality by means of a walk-through of some geostatistical sampling examples. The \pkg{geosample} package provides compatibility with common spatial packages including \pkg{sp} and \pkg{sf}. In \Cref{sec:agd} we give a unifying workflow for using \pkg{geosample} with other \proglang{R} packages, such as \pkg{PrevMap, geoR} and other spatial statistics packages, for generating geostatistical samples, estimating parameters and predicting the phenomenon of interest in unobserved locations $x^*$. \Cref{sec:simstudy} outlines sampling and inference from a simulated dataset using classes of design discussed earlier. \Cref{sec:app-majete} reports an application of the \pkg{geosample} package functionality to adaptive sampling for malaria prevalence mapping in Majete, southern Malawi.
+
+
+\subsection{Geostatistical sampling workflow}
+\label{sec:agd}
+
+The \pkg{geosample} package focuses on geostatistical sampling designs that compromise between designing for efficient parameter estimation and designing for efficient prediction given the values of relevant model parameters. The workflow relies on functionality and outputs from other \proglang{R} packages as determined by the user, mainly to do with parameter estimation and spatial predictions. \Cref{fig:flow} is a diagrammatic representation of the workflow.
+
+The first stage involves deciding on and implementing the initial sampling design, dependent on the objective(s) of the geostatistical analysis problem at hand. The initial design is a non-adaptive design, which can be any of the designs outlined in \Cref{sec:nonadaptive}. Once data have been collected from sample locations in the chosen design, the second stage is to analyse the data in order to estimate model parameters, within an assumed geostatistical model. Parameter estimation can take several forms including guess work, also known as curve fitting ``by eye'', variogram fitting or formal estimation using methods such as maximum likelihood estimation. See \citet{Mardia1984, Christensen2004b, Diggle2007} for details. In our walk through examples, we assume a linear Gaussian model of the form:
+
+\begin{equation}
+\label{eqn:lgm}
+Y_i = d(x_i)^{\prime}\beta + S(x_i) + Z_i, i = 1, \ldots, n
+\end{equation}
+
+where the $Z_i$ are mutually independent $N(0, \tau^2)$ random variables and $S(x)$ is a stationary Gaussian process, with mean $\mu$, variance $\sigma^2 = {\rm Var}(S(x))$ and correlation function $\rho(u) = {\rm Corr}\{S(x), S(x^{\prime})\}$, where $u = ||x - x^{\prime}||$ and $||\cdot||$ denotes Euclidean distance. The $d(x_i)$ are spatially referenced covariates. In all the examples, we work with the Mat\'{e}rn correlation function \citep{Matern1986a, Diggle2007}:
+
+\begin{equation}
+\label{eqn:matern}
+\rho(u, \phi, \kappa) = \{2^{\kappa - 1}\Gamma(\kappa)\}^{-1}(u/\phi)^{\kappa}\kappa_{\kappa}(u/\phi).
+\end{equation}
+
+The third stage is to predict $T^* = (T(x_{(n + 1)}), \ldots, T(x_{(n + q)}))^\top$ at $q$ additional locations where measurements have not been taken. Estimates of all model parameters are plugged into the prediction equation as if they were the true parameter values, in a process referred to as ``\textit{plug-in prediction}''. Inferences can be made, depending on the context, for a range of predictive targets, for example: a single value $S(x_0)$; the value of $S(\cdot)$ over an area of interest or subsets thereof; the minimum or maximum value of $S(x)$; or the probability that $S(x)$ is below or above a particular threshold. This requires all relevant explanatory variables to be available at the prediction locations.
+
+The fourth stage is the implementation of adaptive sampling if there is need for additional samples to achieve the required predictive accuracy. Required inputs include predictions at all unobserved (potential sampling) locations, a sample selection criterion and any spatial constraints. Several sampling rounds can be implemented, allowing for spatial constraints to change at each cycle. This process involves repeated estimation and prediction stages. Adaptive sampling stops when the specified stopping condition(s) have been achieved, see \Cref{sec:adaptive} for details.
+
+\begin{figure}[h]
+  \centering
+    \includegraphics[width=15cm, height = 12cm]{./fd.png}
+  \caption{Geostatistical sampling workflow within \pkg{geosample} package. \textbf{D1}: user decision for \textit{initial design}. \textbf{D2}: user decision whether to sample additional samples, in which case adaptive sample will be generated. \textbf{D3}: user decision to update sampling constraints. \textbf{D4}: user decision to stop further sampling. See text for detailed explanation.}
+  \label{fig:flow}
+\end{figure}
+
+
+\subsection{Simulation example}
+\label{sec:simstudy}
+
+In this example, we generated a binomial dataset available in the package as \code{sim.data}. We generated a realisation of Gaussian process $S(x)$ on a 35 by 35 grid covering the unit square, giving a total of $n^* = 1225$ potential sampling locations. We specified $S(x)$ to have expectation $\mu$ = 0, variance $\sigma^2$ = 1 and Mat\'{e}rn correlation function (\ref{eqn:matern}), with $\phi$ = 0.15 and $\kappa$ = 1.5, and no measurement error, i.e. $\tau^2$ = 0. Binomial observations, with 8 trials at each grid point and probabilities given by the anti-logit of the simulated values of the Gaussian process, constitute the response variable $y$. For the initial sample, we use a simple inhibitory design to sample $n_0$ = 30 locations with $\delta$ = 0.04. The results are shown in \Cref{fig:simpleinhibitory}.
+
+<<simpleinhibitory, include=TRUE, eval=TRUE, echo=TRUE, fig.height=9, fig.width=9, fig.cap="\\label{fig:simpleinhibitory} Simple inhibitory (discrete) design with $\\delta$ = 0.04 and $n_0$ = 30.", message = FALSE, fig.asp=1>>=
+library("geosample")
+library("viridisLite")
+data(sim.data)
+head(sim.data, n = 6L, addrownums = TRUE)
+set.seed(123)
+my.sample <- discrete.inhibit.sample(obj = sim.data, size = 30,
+                                     delta = 0.04, plotit = TRUE)
+@
+
+
+
+The first argument in the function \code{discrete.inhibit.sample} specifies a spatial object i.e. \pkg{sf} or \pkg{sp} object in which each row contains a spatial location and any associated covariates. Sample size is specified via the argument \code{size}. Inhibition distance is set via \code{delta}. Sampled locations are plotted by default, whilst setting the argument \code{plotit} to \code{FALSE} turns the plotting off.
+
+For both model parameter estimation and spatial predictions, we use functions from the \pkg{PrevMap} package \citep{Giorgi2015}. The \code{binomial.logistic.MCML} function fits a geostatistical binomial logistic model with the following inputs: random variables $Y_i$ of positive counts, binomial denominators $m_i$, explanatory variables $d_i \in \IR^p$  and associated sampling locations $x_i:i=1,\ldots,n$ in the study region. Conditionally on a zero-mean Gaussian process $S(x)$ and mutually independent zero-mean Gaussian variables $Z_i$, each $Y_i$ follows a binomial distribution with mean $E\{Y_i|S(x_i), Z_i\}= m_{i}p_{i}$  and
+
+\begin{equation}
+\label{eqn:blm}
+\log\left\{\frac{p}{1 - p}\right\} = d(x_i)^{\prime}\beta + S(x_i) + Z_i.
+\end{equation}
+
+<<simestim, include=TRUE, eval=TRUE, echo=TRUE, fig.keep='none', message=FALSE>>=
+library("PrevMap")
+knots <- as.matrix(expand.grid(seq(-0.2, 1.2, length = 15),
+                               seq(-0.2, 1.2, length = 15)))
+mcmc.ctr <- control.mcmc.MCML(n.sim = 5500, burnin=500, thin = 5)
+dat <- my.sample[[4]]
+par0 <- c(0.001, 1, 0.4)
+model.fit <-
+  binomial.logistic.MCML(y ~ 1, units.m = ~units.m, data = dat, par0 = par0,
+                         coords=~st_coordinates(dat), fixed.rel.nugget = 0,
+                         start.cov.pars = par0[3], control.mcmc = mcmc.ctr,
+                         low.rank = TRUE, knots = knots, kappa = 1.5,
+                         method = "BFGS", messages = FALSE,
+                         plot.correlogram = FALSE)
+
+summary(model.fit, log.cov.pars = FALSE)
+@
+
+
+We use the resulting binomial fit to generate spatial predictions of prevalence at each of the 1225 sampling locations using the \code{spatial.pred.binomial.MCML} function.
+
+
+<<simpred, include=TRUE, eval=TRUE, echo=TRUE>>=
+model.pred <-
+  spatial.pred.binomial.MCML(object = model.fit, type = "joint",
+                             control.mcmc = mcmc.ctr,thresholds = 0.45,
+                             grid.pred = st_coordinates(sim.data),
+                             scale.predictions = "prevalence",
+                             scale.thresholds ="prevalence",
+                             standard.errors = TRUE, messages = FALSE,
+                             plot.correlogram = FALSE)
+@
+
+Several results can be summarised and visualised from the prediction results, including \textit{predictions} and \textit{exceedance probabilities} at each of the prediction locations.
+
+<<predvis, include = TRUE, eval=TRUE, echo=TRUE, fig.height=7, fig.width=7, fig.cap = "\\label{fig:predvis} Spatial prediction visualisation. Spatial predictions on the LHS and exceedance probabilities $P(x; 0.45)$ = $P$($prev$ > 0.45 at location $x$) on the RHS.", fig.asp=1>>=
+par(mfrow = c(1,2))
+plot(model.pred, type = "prevalence", col = viridis(256, direction = -1),
+     summary = "predictions", zlim = c(0, 1))
+contour(model.pred, type="prevalence", summary="predictions", zlim = c(0, 1),
+        levels = seq(0.1,0.9, 0.1), add = TRUE)
+plot(model.pred,summary="exceedance.prob",zlim=c(0,1),
+     col = viridis(256, direction = -1))
+contour(model.pred, summary = "exceedance.prob",zlim = c(0, 1),
+        levels = seq(0.1,0.3, 0.1), add = TRUE)
+par(mfrow = c(1,1))
+@
+
+
+
+To implement a \textit{minimum distance batch adaptive sampling} of 10 additional locations, using the \textit{prediction variance} selection criterion, we extract prediction variances at all potential locations. We set the minimum sampling distance to be $\delta$ = 0.1.
+
+<<adaptivesample, include=TRUE, eval=TRUE, echo=TRUE, fig.height=9, fig.width=9, fig.cap = "\\label{fig:adaptivesample} Adaptive sampling design with $\\delta$ = 0.1 and $b = 10$, Dark blue dots ($n_0$ = 30) are the initial sampling locations. Red dots ($n_a$ = 10) are adaptive sampling locations added after analysing data from the initial design.">>=
+obj.1 <- as.data.frame(cbind(model.pred$grid,
+         c(model.pred$prevalence$standard.errors)^2))
+colnames(obj.1) <- c("coord1", "coord2", "pred.var")
+obj.1 <- sf::st_as_sf(obj.1, coords = c('coord1', 'coord2'))
+adapt.sample.pv <-
+  adaptive.sample(obj1 = obj.1, obj2 = dat,
+                  pred.var.col = 1,criterion = "predvar",
+                  delta = 0.1, batch.size = 10, poly = NULL,
+                  plotit = TRUE)
+
+@
+
+The argument \code{obj1} specifies a spatial object that contains potential sampling locations and their associated \textit{prediction variance} and/or \textit{exceedance probabilities}. Locations from the existing (initial) design are specified via argument \code{obj2}, which is also a spatial object such as \pkg{sf} or \pkg{sp} object. The \code{batch.size} determines the number of additional locations to be sampled per sampling round. A batch size equal to 1 will implement a \textit{singleton adaptive design}. The function has a default behaviour to plot sample locations. These are shown in \Cref{fig:adaptivesample}.
+
+
+Note that similar/comparable \textit{parameter estimation} and \textit{spatial prediction} results can be obtained from several other \proglang{R} packages. The choice of which package to use depends on a number of factors including, methodological implementation in the packages, analysis objective(s) and ease of use by the user. These packages include \pkg{geoRglm, geostatsp, geoBayes, spBayes, spGLM, spaMM, spMvGLM} and \pkg{geoCount} for count data. See \url{https://cran.r-project.org/web/views/Spatial.html} for a comprehensive list.
+
+
+\subsection{Case study: malaria prevalence in Majete, southern Malawi.}
+\label{sec:app-majete}
+
+We now illustrate the use of the \pkg{geosample} package to construct a survey sample for malaria prevalence mapping in an area surrounding Majete Wildlife Reserve (MWR) within Chikwawa district, southern Malawi. The MWR is situated in the lower Shire valley at the edge of the African Rift Valley (15.97$^{\circ}$S; 34.76$^{\circ}$E). The whole perimeter is home to a population of around 100,000 (at the time of writing). \Cref{fig:majete} shows the households of the study area. The perimeter is subdivided into 19 community-based organizations (CBOs). In the study, three sets of these CBOs (CBOs - 1 \& 2, CBOs -15 \& 16, and CBOs - 6, 7 \& 8) define \textit{focal areas} A, B, and C, respectively. See \citet{Chipeta2016, Chipeta2016b, Kabaghe2017, McCann2017} for more details.
+
+\begin{figure}[ht]
+  \centering
+    \includegraphics[width=15cm, height = 10cm]{./Majete.pdf}
+  \caption{Majete Wildlife Reserve (brown) is surrounded by 19 CBOs (grey and green) comprising the Majete perimeter. Three focal areas (green), labelled as A, B, and C mark the communities selected for malaria indicator surveys. The rest of the CBOs (grey) are outside the project's catchment area. Reprinted from \citet{Kabaghe2017}.}
+  \label{fig:majete}
+\end{figure}
+
+The first stage in the geostatistical design was a complete enumeration of households in the study region, including their geo-location collected using Global Positioning System devices on a Samsung Galaxy Tab 3 running the Android 4.1 Jellybean operating system. We consider \textit{focal area} A of the study area and use a simple inhibitory design to sample 60 households in the initial sample. Data from these households are then analysed using the binomial logistic model (\ref{eqn:blm}), and predictive analysis is carried out to map malaria prevalence.
+
+All potential (available) household locations are shown in \Cref{fig:majlocs}.
+<<avail, include=TRUE, eval=TRUE, echo=TRUE, fig.height=9, fig.width=9,fig.cap="\\label{fig:majlocs} All potential household sampling locations in Majete.", fig.asp=1>>=
+data("border")
+data("majete")
+plot(st_geometry(majete), pch = 19, cex = 0.5,
+     xlim=range(st_coordinates(border)[,1]),
+     ylim=range(st_coordinates(border)[,2]),
+     axes = TRUE, xlab="longitude", ylab="latitude")
+plot(border, lwd = 2, add= TRUE)
+@
+
+The sampled households (black dots) are shown in \Cref{fig:majeteSI}.
+<<applic1, include=TRUE, eval=TRUE, echo=TRUE, fig.height=10, fig.width=10, fig.cap="\\label{fig:majeteSI} Simple inhibitory (discrete) design with $\\delta$ = 400 meters and $n_0$ = 60 households (black dots) in Majete.", fig.asp=1>>=
+set.seed(1234)
+init.sample <-
+  discrete.inhibit.sample(obj = majete, size = 60, delta = 0.4,
+                          k = 0,  delta.fix = FALSE,
+                          poly = border, plotit = TRUE)
+@
+
+
+We extract data from the sampled households, and fit the binomial logistic model (\ref{eqn:blm}) to the data. The binomial logistic estimates are then used for prediction at unobserved households. See \citet{Giorgi2015} for details.
+
+<<applicestim1, include=TRUE, eval=TRUE, echo=TRUE, fig.keep='none'>>=
+mrdt <- init.sample[[4]]
+glmfit <- glm(rdt~1, data = mrdt,
+              family = binomial(link = logit))
+ID.coords <- create.ID.coords(data=as.data.frame(mrdt),
+                              coords=~st_coordinates(mrdt))
+mrdt$units.m <- rep(1,nrow(mrdt))
+
+par0 <- c(coef(glmfit),cov.pars=c(0.93171,3.9549))
+control.mcmc <- control.mcmc.MCML(n.sim = 5500,burnin=500,thin=5)
+model.fit <-
+  binomial.logistic.MCML(rdt~1, units.m=~units.m,par0=par0,
+                         coords=~st_coordinates(mrdt),data=mrdt,
+                         ID.coords = ID.coords, kappa=0.5,
+                         control.mcmc=control.mcmc, method="BFGS",
+                         fixed.rel.nugget = 0, start.cov.pars=c(par0[3]),
+                         messages = FALSE, plot.correlogram = FALSE)
+
+summary(model.fit, log.cov.pars = FALSE)
+@
+
+
+We now carry out spatial predictions over all unobserved households, with the model parameters fixed at the MCML estimates, and summarise the predictive distribution of prevalence at each location through its mean, standard deviation and probability that the estimated prevalence is above 15 \%. Using these results, an adaptive sample of 40 additional households is taken. The results are shown in \Cref{fig:applicadapt1}.
+
+<<applicadapt1, include=TRUE, eval=TRUE, echo=TRUE, fig.height=10, fig.width=10, fig.cap = "\\label{fig:applicadapt1} Adaptive sampling design with $\\delta$ = 150 meters and $b = 40$, Blue dots ($n_0$ = 60) are the initial sampling households. Red dots ($n_a$ = 40) are adaptive samples added after analysing data from the initial design.", fig.asp=1>>=
+avail.locs <- majete[!(majete$geometry) %in% (mrdt$geometry),]
+model.pred <-
+  spatial.pred.binomial.MCML(model.fit,
+                             grid.pred=unique(st_coordinates(avail.locs)),
+                             control.mcmc=control.mcmc, type = "marginal",
+                             scale.predictions = "prevalence",
+                             standard.errors = TRUE, thresholds = 0.15,
+                             scale.thresholds = "prevalence",
+                             messages = FALSE, plot.correlogram = FALSE)
+
+pred.vars <- as.data.frame(cbind(model.pred$grid,
+                                c(model.pred$prevalence$standard.errors)^2))
+
+colnames(pred.vars)<- c("coord1", "coord2", "pred.var")
+pred.vars <- sf::st_as_sf(pred.vars, coords = c('coord1', 'coord2'))
+st_crs(pred.vars) <- st_crs(mrdt)
+adapt.sample.pv <-
+   adaptive.sample(obj1 = pred.vars, obj2 = mrdt,
+                  pred.var.col = 1, criterion = "predvar",
+                  delta = 0.15, batch.size = 40,
+                  poly = border, plotit = TRUE)
+@
+
+
+Model parameter estimates are updated using the augmented data from the adaptive sampling.
+
+
+<<applicestim2, include=TRUE, eval=TRUE, echo=TRUE, fig.keep='none'>>=
+mrdt <- majete[(majete$geometry) %in%
+                 (adapt.sample.pv$sample.locs$curr.sample$geometry),]
+
+ID.coords <- create.ID.coords(data=as.data.frame(mrdt),
+                              coords=~st_coordinates(mrdt))
+mrdt$units.m <- rep(1,nrow(mrdt))
+
+par0 <- c(coef(model.fit))
+model.fit <-
+  binomial.logistic.MCML(rdt~1, units.m=~units.m,par0=par0,
+                         coords=~st_coordinates(mrdt),data=mrdt,
+                         ID.coords = ID.coords,
+                         control.mcmc=control.mcmc, kappa=0.5,
+                         fixed.rel.nugget = 0,
+                         start.cov.pars=c(par0[3]),
+                         method="BFGS", messages = FALSE,
+                         plot.correlogram = FALSE)
+
+summary(model.fit, log.cov.pars = FALSE)
+@
+
+
+We now carry out spatial predictions over a 5 metre by 5 metre regular grid, with model parameters fixed at the MCML estimates from the accrued data, and summarise the predictive distribution of prevalence in each grid cell through its mean, standard deviation and probability that the estimated prevalence is above 15 \%.
+
+
+<<applicpred2, include=TRUE, eval=TRUE, echo=TRUE, fig.height=9, fig.width=9, fig.cap = "\\label{fig:applicpred2} (a) Malaria prevalence in Majete. (b) Exceedance probabilities $P(x; 0.15)$ for the predictions. $P(x; 0.15)$ = $P$($prev > 0.15$ at location $x$). (c) Standard errors of predictions.", fig.asp=1>>=
+library(splancs)
+pred.poly <- as_Spatial(border)@polygons[[1]]@Polygons[[1]]@coords
+grid.pred <- gridpts(pred.poly, xs=0.05, ys=0.05)
+
+model.pred <-
+  spatial.pred.binomial.MCML(model.fit, grid.pred=grid.pred,
+                             control.mcmc=control.mcmc,
+                             type = "marginal",
+                             scale.predictions = "prevalence",
+                             standard.errors = TRUE, thresholds = 0.15,
+                             scale.thresholds = "prevalence",
+                             messages = FALSE, plot.correlogram = FALSE)
+##1. Prevalence predictions
+prevpred <-
+  rasterFromXYZ(cbind(model.pred$grid[,1],
+                      model.pred$grid[,2],
+                      model.pred$prevalence$predictions))
+prevpred <- raster::disaggregate(prevpred, fact = 10,
+                                 method = "bilinear")
+
+##2. Std error
+stderror <-
+  rasterFromXYZ(cbind(model.pred$grid[,1],
+                      model.pred$grid[,2],
+                      model.pred$prevalence$standard.errors))
+stderror <- raster::disaggregate(stderror, fact = 10,
+                                 method = "bilinear")
+
+##3. Exceedance probablities
+exceed <-
+  rasterFromXYZ(cbind(model.pred$grid[,1],
+                      model.pred$grid[,2],
+                      model.pred$exceedance.prob))
+exceed <- raster::disaggregate(exceed, fact = 10,
+                                 method = "bilinear")
+par(mfrow = c(2,2))
+plot(prevpred, main = "(a)", col = viridis(256, direction = -1))
+plot(exceed, main="(b)", zlim = c(0,1), col = viridis(256, direction = -1))
+plot(stderror, main = "(c)", col = viridis(256, direction = -1))
+par(mfrow = c(1,1))
+@
+
+
+%package usage with simulated and real life examples from Majete...
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section{Conclusions and future developments}
+\label{sec:conclusion}
+
+We have demonstrated the use of the \pkg{geosample} package for geostatistical sampling of spatially referenced data. The package is compatible with existing \proglang{R} packages for parameter estimation and predictive inference. It uses novel and computationally efficient algorithms for constructing adaptive and non-adaptive geostatistical designs, including traditional random sampling. The package also provides automatic visualisation of the results by plotting the sampled locations as illustrated in \Cref{fig:simpleinhibitory,fig:adaptivesample}. When sampling is only possible at a pre-determined set of locations, for example households within a community or communities within a region, the package  requires that all such potential sampling locations are available in georeferenced form.
+
+In the adaptive case, the package offers the user a choice between two design selecton criteria:  \textit{prediction variance} and \textit{exceedance probability}. We plan to add flexibility to this aspect of the package  by allowing the user to define their own criterion.
+
+We also plan to incorporate costs associated with travelling between any two  potential sampling locations. Given a cost matrix, \textit{least-cost path} (LCP) selection criterion would identify the most economical path of travel \citep{Adriaensen2003}, which could  be balanced against statistical efficiency so as to give an optimal design for fixed total cost, rather than for fixed total sample size. In contexts like our example of malaria prevalence mapping, an appropriate cost matrix might need to take account of  distance, terrain and predicted travel times/speeds \citep{Driezen2007, Houben2012, Li2010}.
+
+A third extension is to relax the requirement for all potential sampling locations to be georeferenced beforehand.  In our example of malaria prevalence mapping for the Majete study this involved substantial effort in the field. For prevalence mapping at larger geographical scales, the corresponding effort would have been prohibitive.  One approach that we plan to investigate  is to use a two-stage stratified sampling procedure, in which the study area is divided into a large number of  strata, for example administrative units. A suitable design strategy might then be first to sample strata  using a convenient reference location for each stratum, for example its centroid, then to georeference all potential sampling units within each sampled stratum.
+
+We will report these extensions separately in due course.
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\section*{Acknowledgements}
+We thank Majete Malaria Project (MMP) for allowing us to use part of the project data in illustrating the \pkg{geosample} package functionality. M G Chipeta was supported by the Malawi-Liverpool Wellcome Trust/Lancaster University post-doctoral training fellowship. P J Diggle is supported by the MMP grant funded by the Dioraphte foundation, Netherlands. The content is solely the responsibility of the authors and does not necessarily represent the official views of the funders. We thank all the contributors and reviewers. This work utilises a number of independent \proglang{R} extensions, including \pkg{splancs} \citep{Rowlingson2017}, \pkg{pdist} \citep{Wong2013}, \pkg{dplyr} \citep{Wickham2018}, \pkg{PrevMap} \citep{Giorgi2015}, \pkg{geoR} \citep{RibeiroJr.2016},  \pkg{sp} \citep{Pebesma2005} and \pkg{sf} \citep{Pebesma2018}.
+
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\bibliography{geosample}
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+\end{document}
